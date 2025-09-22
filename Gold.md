@@ -56,6 +56,9 @@
 - Vì là S3 nên thử request vô `http://169.254.169.254/latest/meta-data/latest/meta-data/iam/security-credentials/`
 - May là trả ra cái role và thử tiếp thì có token
 - Tiếp tục hỏi Gemini để cài **AWS CLI** lên máy rồi vô Storage lấy Flag thôi
+- Flag mà teammate tìm được, mình chỉ ngồi chat với Gemini thôi
+
+![](./flag_gold.jpg)
 
 ## Thanks to CBJS for the chalange!
 ## Have fun!
