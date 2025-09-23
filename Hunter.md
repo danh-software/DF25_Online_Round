@@ -315,5 +315,7 @@ echo "Done. If no flag was found, try inspecting layers manually in $WORK_DIR"
 
 - Ta có phần còn lại của flag: 6ea2c94c3e
 
-## DF25{d4e9e6814f6ea2c94c3e}
+### 7. To be continue
+
+## DF25{d4e9e6814f6ea2c94c3e
 ## Thanks CBJS!
